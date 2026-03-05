@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ns-aquaforte"
+version = "0.1.0"
+description = "LLM-guided SAT solver with phase-adaptive algorithm selection"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "J. Roberto Jimenez", email = "tijuanapaint@gmail.com"}
+]
+keywords = ["sat", "solver", "llm", "phase-transition", "optimization", "jax"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+dependencies = [
+    "python-sat>=0.1.8.dev1",
+    "anthropic>=0.18.0",
+    "jax>=0.4.35",
+    "jaxlib>=0.4.35",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+    "tqdm>=4.66.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "black>=24.0",
+    "ruff>=0.6"
+]
+
+[project.urls]
+Homepage = "https://github.com/deskiziarecords/ns-aquaforte"
+Repository = "https://github.com/deskiziarecords/ns-aquaforte"
+Issues = "https://github.com/deskiziarecords/ns-aquaforte/issues"
+
+[project.scripts]
+ns-aquaforte = "ns_aquaforte.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ns_aquaforte*"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
