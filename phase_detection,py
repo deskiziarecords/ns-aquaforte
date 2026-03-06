@@ -1,0 +1,140 @@
+import os
+import json
+from typing import Tuple, Any
+
+def detect_phase_llm(
+    problem: Any,
+    provider: str = "anthropic",
+    model: str = "claude-sonnet-4",
+    api_key: str | None = None,
+    max_tokens: int = 100,
+    temperature: float = 0.0,
+) -> Tuple[str, float]:
+    """
+    Use any supported LLM to predict clause density phase of a SAT instance.
+    
+    Supported providers (add more as needed):
+    - anthropic
+    - openai
+    - google (Gemini)
+    - xai (Grok)
+    """
+    
+    # Extract basic stats (unchanged)
+    n_vars = problem.nv
+    n_clauses = len(problem.clauses)
+    density = n_clauses / n_vars if n_vars > 0 else 0.0
+    
+    clause_lengths = [len(clause) for clause in problem.clauses]
+    avg_length = sum(clause_lengths) / len(clause_lengths) if clause_lengths else 0.0
+    
+    # Prompt (same as yours — good structure)
+    prompt = f"""Analyze this SAT instance and predict its clause density phase:
+Variables: {n_vars}
+Clauses: {n_clauses}
+Clause/Variable Ratio (α): {density:.2f}
+Average Clause Length: {avg_length:.2f}
+Phase definitions:
+- "low" (α < 4.0): Under-constrained, many solutions exist
+- "critical" (4.0 ≤ α ≤ 4.5): Phase transition region, hardest to solve
+- "high" (α > 4.5): Over-constrained, likely unsatisfiable
+Respond with only a JSON object:
+{{"phase": "low"|"critical"|"high", "confidence": 0.0-1.0}}"""
+    
+    # Resolve API key: explicit > env var
+    api_key = api_key or os.environ.get(_get_env_key_name(provider))
+    if not api_key:
+        raise ValueError(
+            f"No API key for provider '{provider}'. "
+            f"Set environment variable {_get_env_key_name(provider)} "
+            "or pass api_key= explicitly."
+        )
+    
+    # ── Provider router ──────────────────────────────────────────────────────
+    if provider.lower() == "anthropic":
+        from anthropic import Anthropic
+        
+        client = Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = message.content[0].text
+    
+    elif provider.lower() == "openai":
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=api_key)
+        completion = client.chat.completions.create(
+            model=model,  # e.g. gpt-4o, o1-mini
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        response_text = completion.choices[0].message.content
+    
+    elif provider.lower() == "google" or provider.lower() == "gemini":
+        import google.generativeai as genai
+        
+        genai.configure(api_key=api_key)
+        model_obj = genai.GenerativeModel(model)  # e.g. gemini-1.5-pro, gemini-2.5-flash
+        response = model_obj.generate_content(prompt)
+        response_text = response.text
+    
+    elif provider.lower() == "xai" or provider.lower() == "grok":
+        # Option A: Official xAI SDK (preferred if installed)
+        try:
+            from xai_sdk import Client
+            from xai_sdk.chat import user
+            
+            client = Client(api_key=api_key)
+            chat = client.chat.create(model=model or "grok-4")  # grok-4, grok-4.1-fast, etc.
+            chat.append(user(prompt))
+            response = chat.sample(max_tokens=max_tokens, temperature=temperature)
+            response_text = response.content  # adjust based on exact SDK response shape
+        except ImportError:
+            # Option B: OpenAI-compatible fallback (most reliable in 2026)
+            from openai import OpenAI
+            
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.x.ai/v1",
+            )
+            completion = client.chat.completions.create(
+                model=model or "grok-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            response_text = completion.choices[0].message.content
+    
+    else:
+        raise ValueError(f"Unsupported provider: {provider}. Add support in the router.")
+    
+    # Parse JSON (add error handling in production)
+    try:
+        # Clean up possible markdown/code fences
+        cleaned = response_text.strip().removeprefix("```json").removesuffix("```").strip()
+        result = json.loads(cleaned)
+        phase = result["phase"].lower()
+        confidence = float(result["confidence"])
+        if phase not in {"low", "critical", "high"}:
+            raise ValueError("Invalid phase returned")
+        return phase, confidence
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse LLM response:\n{response_text}\n\nError: {e}")
+    
+
+def _get_env_key_name(provider: str) -> str:
+    mapping = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai":    "OPENAI_API_KEY",
+        "google":    "GEMINI_API_KEY",
+        "gemini":    "GEMINI_API_KEY",
+        "xai":       "XAI_API_KEY",
+        "grok":      "XAI_API_KEY",
+        # add mistral, cohere, etc. later
+    }
+    return mapping.get(provider.lower(), "LLM_API_KEY")
